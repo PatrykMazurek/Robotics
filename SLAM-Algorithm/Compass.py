@@ -1,6 +1,7 @@
 import smbus, time, math
 import os
 bus = smbus.SMBus(1)
+
 address = 0x1e
 x_offset = 0
 y_offset = 0
@@ -27,7 +28,8 @@ def read_word_2c(adr):
 def write_byte(adr, value):
     bus.write_byte_data(address, adr, value)
 
-def compass_angel( x_csv_offset, y_csv_offset):
+# method return the angle in degrees
+def compass_angle( x_csv_offset, y_csv_offset):
     write_byte(0, 0b01110000)  # Set to 8 samples @ 15Hz
     write_byte(1, 0b00100000)  # 1.3 gain LSb / Gauss 1090 (default)
     write_byte(2, 0b00000000)  # Continuous sampling
@@ -42,6 +44,7 @@ def compass_angel( x_csv_offset, y_csv_offset):
     #print("Bearing: ", bearing)
     return round(math.degrees(bearing), 3)
 
+# calibration process
 def calibrating(file_name):
     f = open(file_name+".dat", "a+")
 
@@ -87,5 +90,5 @@ def calibrating(file_name):
     y_offset = (maxy + miny) / 2
     offset.writelines(str(x_offset)+";"+str(y_offset))
     offset.close()
-    # zakończenie procesu kalibracji
+    # completion of the calibration process
     return False
