@@ -1,6 +1,6 @@
 # SLAM-OR 
 
-Proposed SLAM algorithm with detection of objects (OR) in the environment. Based on the algorithm proposed by [Luigi Freda] (https://www.luigifreda.com), it has been extended to include the use of YOLO neural networks to recognize objects from the environment and mark them on a 3D map.
+Proposed SLAM algorithm with detection of objects (OR) in the environment. Based on the algorithm proposed by [Luigi Freda] (https://www.luigifreda.com) it has been extended to include the use of YOLO neural networks to recognize objects from the environment and mark them on a 3D map.
 
 ## Install 
 
