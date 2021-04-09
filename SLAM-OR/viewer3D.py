@@ -92,7 +92,7 @@ class Viewer3D(object):
         print('Viewer stopped')   
         
     def is_paused(self):
-        return (self._is_paused.value == 1)       
+        return (self._is_paused.value == 1)
 
     def viewer_thread(self, qmap, qvo, is_running, is_paused):
         self.viewer_init(kViewportWidth, kViewportHeight)
@@ -216,11 +216,13 @@ class Viewer3D(object):
                     pangolin.DrawCameras(self.map_state.poses[:])
 
             # rysowaine wektora za którym powinno wyznaczać boxy
-            if len(self.map_state.line) > 0 :
-            #     # wyznaczam nowy wektor obrócony o -90 i 90 stopni o długości 10
-                gl.glLineWidth(3)
-                gl.glColor3f(1.0, 0.0, 0.0)
-                pangolin.DrawLines([self.map_state.line[0], self.map_state.line[0]])
+            # if len(self.map_state.line) > 0 :
+            # #     # wyznaczam nowy wektor obrócony o -90 i 90 stopni o długości 10
+            #     gl.glLineWidth(3)
+            #     gl.glPointSize(self.pointSize)
+            #     gl.glColor3f(1.0, 0.0, 1.0)
+            #     pangolin.DrawPoints(self.map_state.line)
+            #     # pangolin.DrawLines([self.map_state.line[0], self.map_state.line[0]])
 
 
             if len(self.map_state.points)>0:
@@ -231,7 +233,6 @@ class Viewer3D(object):
 
             # TODO dopisać rozwiązanie drukujące na ekran zaznaczone obiekty w postaci obszarów
             if len(self.map_state.dict_pose) > 0:
-
                 for k, v in self.map_state.dict_pose.items():
                     sizes = []
                     poses = [ np.identity(4) for i in range(len(v))]
@@ -311,31 +312,62 @@ class Viewer3D(object):
         map = slam.map
         map_state = Viewer3DMapElement()
         color = np.flip([0., 0., 0.])
-        temp_p = []
-
+        temp_p, temp_c = [], []
+        point_after_camera, point_color_after_camera = [], []
 
         if map.num_frames() > 0:
             map_state.cur_pose = map.get_frame(-1).Twc.copy()
             if map.num_frames() > 1:
-                prev_pose = map.get_frame(-2).Twc.copy()[:, 3]
-                cure_pose = map_state.cur_pose[:, 3]
-                # print(" {}".format(prev_pose))
-                # print("{}".format(cure_pose))
-                vector_length = math.sqrt( (cure_pose[0] - prev_pose[0])**2
-                                           + (cure_pose[1] - prev_pose[1])**2
-                                           + (cure_pose[2] - prev_pose[2])**2)
+                prev_pose = map.get_frame(-2).Twc.copy()
+                cure_pose = map_state.cur_pose.copy()
 
-                v = np.array([cure_pose[0] - prev_pose[0], cure_pose[2] - prev_pose[2]])
+                p_r, p_t = prev_pose[:3,:3], prev_pose[:, 3]
+                c_r, c_t = cure_pose[:3,:3], cure_pose[:, 3]
+
+                p_p = p_r.dot(p_t[:3])
+                c_p = c_r.dot(c_t[:3])
+
+                n_p = c_p - p_p
+                print("c_p {}".format(c_p))
+
+                # vector_length = math.sqrt( (cure_pose[0] - prev_pose[0])**2
+                #                            + (cure_pose[1] - prev_pose[1])**2
+                #                            + (cure_pose[2] - prev_pose[2])**2)
+
+                x, y, z = np.radians(0), np.radians(0), np.radians(90)
+
+                # x
+                Rx = np.array([[1, 0, 0],
+                               [0, np.cos(x), -np.sin(x)],
+                               [0, np.sin(x), np.cos(x)],
+                               ], dtype=np.float)
+                # y
+                Ry = np.array([[np.cos(y), 0, np.sin(y)],
+                               [0, 1, 0],
+                               [-np.sin(y), 0, np.cos(y)],
+                                ], dtype=np.float)
+                # z
+                Rz = np.array([[np.cos(z), -np.sin(z), 0],
+                               [np.sin(z), np.cos(z), 0],
+                               [0, 0, 1],
+                                ], dtype=np.float)
+
+                R = Rz.dot(Ry.dot(Rx))
 
 
-                # obróenie wektora o 90 stopni
-                theta = np.radians(90)
-                Rx = np.array([[1],[0],[0],[0]])
+                # print("vector lenght {}".format(vector_length))
+                temp_tab = R.dot(c_p)
+                print(temp_tab)
+                pot = [[temp_tab[0] + n_p[0], temp_tab[1], temp_tab[2] + n_p[2]],
+                        [temp_tab[0], temp_tab[1], temp_tab[2]],
+                        [temp_tab[0], temp_tab[1], temp_tab[2]]]
 
-                line_f = map_state.cur_pose[:3]
-                line_f[1] = line_f[1] * (vector_length * 3)
-
-                map_state.line = [cure_pose[:3], line_f]
+                # new_point = np.array([temp_tab[0] *3, temp_tab[1], temp_tab[2] * 3])
+                # # # print("new point {}".format(new_point))
+                # # # line_f[1] = line_f[1] * (vector_length * 3)
+                # # print("c {}".format(cure_pose))
+                # # print("p {}".format(new_point))
+                map_state.line = pot
 
 
         if slam.tracking.predicted_pose is not None: 
@@ -416,7 +448,9 @@ class Viewer3D(object):
         num_map_points = map.num_points()
         if num_map_points>0:
             for i,p in enumerate(map.get_all_detecting_point()):
-                temp_p.append(p.pt)
+                if p.pt[2] < c_p[2]:
+                    point_after_camera.append(p.pt)
+                    point_color_after_camera.append(np.flip(p.color))
                 map_state.points.append(p.pt)
                 map_state.colors.append(np.flip(p.color))
 
@@ -427,42 +461,43 @@ class Viewer3D(object):
         #map_state.colors = np.array(map_state.colors) * 0.
         map_state.colors = np.array(map_state.colors)
 
-
-        # klastrowanie punktów
-        # if len(temp_p) > 0:
-        #     X = np.array(temp_p)
-        #     Z = ward(pdist(X[:, 0::2]))
-        #     cluster = fcluster(Z, t=9.5, criterion='distance')
-        #     # cluster = fclusterdata(X[:, 0::2], t=6)
-        #     unique, count = np.unique(cluster, return_counts=True)
-        #     # if frame_id % 5 == 0:
-        #     for n, v in zip(unique, count):
-        #         if v > 4:
-        #             res = np.where(cluster == n)
-        #             t = map_state.points[res]
-        #             c = map_state.colors[res]
-        #             c_unique, c_count = np.unique(c, axis=0, return_counts=True)
-        #             t_xmin, t_ymin, t_zmin = min(t[:, 0]), min(t[:, 1]), min(t[:, 2])
-        #             t_xmax, t_ymax, t_zmax = max(t[:, 0]), max(t[:, 1]), max(t[:, 2])
-        #             x_size = math.fabs(t_xmax - t_xmin)
-        #             y_size = math.fabs(t_ymax - t_ymin)
-        #             z_size = math.fabs(t_zmax - t_zmin)
-        #             pose_x = t_xmin + (t_xmax - t_xmin)/2
-        #             pose_z = t_zmin + (t_zmax - t_zmin)/2
-        #             # map_state.box_left_botton.append([pose_x, t_ymin, pose_z])
-        #             # map_state.box_size.append([x_size, y_size, z_size])
-        #             # map_state.box_color.append(c)
-        #             if len(c_count) > 1:
-        #                 c_color = c_unique[np.argmax(c_count)]
-        #                 if str(c_color) in map_state.dict_pose:
-        #                     map_state.dict_pose[str(c_color)].append([[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]])
-        #                 else:
-        #                     map_state.dict_pose[str(c_color)] = [[[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]]]
-        #             else:
-        #                 if str(c_unique[0]) in map_state.dict_pose:
-        #                     map_state.dict_pose[str(c_unique[0])].append([[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]])
-        #                 else:
-        #                     map_state.dict_pose[str(c_unique[0])] = [[[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]]]
+        # point clustering
+        if len(point_after_camera) > 2:
+            X = np.array(point_after_camera)
+            Z = ward(pdist(X[:, 0::2]))
+            cluster = fcluster(Z, t=9.5, criterion='distance')
+            # cluster = fclusterdata(X[:, 0::2], t=6)
+            unique, count = np.unique(cluster, return_counts=True)
+            # if frame_id % 5 == 0:
+            for n, v in zip(unique, count):
+                if v > 4:
+                    res = np.where(cluster == n)
+                    point_after_camera = np.array(point_after_camera)
+                    point_color_after_camera = np.array(point_color_after_camera)
+                    t = point_after_camera[res]
+                    c = point_color_after_camera[res]
+                    c_unique, c_count = np.unique(c, axis=0, return_counts=True)
+                    t_xmin, t_ymin, t_zmin = min(t[:, 0]), min(t[:, 1]), min(t[:, 2])
+                    t_xmax, t_ymax, t_zmax = max(t[:, 0]), max(t[:, 1]), max(t[:, 2])
+                    x_size = math.fabs(t_xmax - t_xmin)
+                    y_size = math.fabs(t_ymax - t_ymin)
+                    z_size = math.fabs(t_zmax - t_zmin)
+                    pose_x = t_xmin + (t_xmax - t_xmin)/2
+                    pose_z = t_zmin + (t_zmax - t_zmin)/2
+                    # map_state.box_left_botton.append([pose_x, t_ymin, pose_z])
+                    # map_state.box_size.append([x_size, y_size, z_size])
+                    # map_state.box_color.append(c)
+                    if len(c_count) > 1:
+                        c_color = c_unique[np.argmax(c_count)]
+                        if str(c_color) in map_state.dict_pose:
+                            map_state.dict_pose[str(c_color)].append([[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]])
+                        else:
+                            map_state.dict_pose[str(c_color)] = [[[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]]]
+                    else:
+                        if str(c_unique[0]) in map_state.dict_pose:
+                            map_state.dict_pose[str(c_unique[0])].append([[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]])
+                        else:
+                            map_state.dict_pose[str(c_unique[0])] = [[[pose_x, t_ymin, pose_z], [x_size, y_size, z_size]]]
 
                     # pose = np.identity(4)
                     # pose[:3, 3] = np.array([t_xmin, t_ymin, t_zmin])
